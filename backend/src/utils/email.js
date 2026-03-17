@@ -4,11 +4,9 @@ import nodemailer from "nodemailer";
 
 const dns = require("dns");
 dns.setDefaultResultOrder("ipv4first");
-
 const nodemailer = require("nodemailer");
-const dns = require("dns");
 
-dns.setDefaultResultOrder("ipv4first");
+
 
 const gmailUser = process.env.GMAIL_USER;
 const gmailPass = process.env.GMAIL_APP_PASSWORD;
