@@ -65,10 +65,6 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             });
         } catch (error) {
-            if (error.status === 403 && error.email) {
-                window.location.href = `/verify-email?email=${encodeURIComponent(error.email)}`;
-                return;
-            }
             showGlobalAlert(error.message || "Credenciales inválidas.", "danger");
         } finally {
             setButtonLoading("btnLogin", false);

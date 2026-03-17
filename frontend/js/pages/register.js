@@ -69,7 +69,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
             const result = await registerUser(payload);
 
-            window.location.href = `/verify-email?email=${encodeURIComponent(email)}`;
+            localStorage.setItem("user", JSON.stringify(result.data));
+            localStorage.setItem("token", result.token || "");
+
+            window.location.replace('/client/proyectos');
         } catch (error) {
             showGlobalAlert(error.message || "No se pudo completar el registro.", "danger");
         } finally {

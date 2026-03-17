@@ -6,20 +6,12 @@ import {
     findRoleByName,
     createCompany,
     createUser,
-    upsertPendingRegistration,
-    findPendingByEmail,
-    deletePendingByEmail,
 } from "../models/auth.model.js";
 import { hashPassword, comparePassword } from "../utils/hash.js";
 import { successResponse, errorResponse } from "../utils/response.js";
-import { sendVerificationEmail } from "../utils/email.js";
 
 const JWT_SECRET = process.env.JWT_SECRET || "super_secret_change_me";
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "8h";
-
-function generateCode() {
-    return String(Math.floor(100000 + Math.random() * 900000));
-}
 
 function issueToken(user) {
     return jwt.sign(
@@ -30,40 +22,51 @@ function issueToken(user) {
 }
 
 // POST /api/auth/register
-// Stores data in pending_registrations (NOT in companies/app_user).
-// Real account is only created after email verification.
+// Creates company and user directly, returns JWT immediately.
 export async function register(req, res) {
     try {
         const { companyName, email, password, economicSector, employeeCount } = req.body;
 
-        // Reject if a verified account already exists
         const existingUser = await findUserByEmail(email);
         if (existingUser) {
             return errorResponse(res, "El correo ya está registrado.", 409);
         }
 
-        const passwordHash = await hashPassword(password);
-        const code = generateCode();
-        const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
+        const companyRole = await findRoleByName("client");
+        if (!companyRole) {
+            return errorResponse(res, "Rol 'client' no encontrado en la base de datos.", 500);
+        }
 
-        // Upsert: if they re-register before verifying, refresh the code and data
-        await upsertPendingRegistration({
+        const passwordHash = await hashPassword(password);
+
+        const companyId = await createCompany(companyName, economicSector, employeeCount);
+
+        await createUser({
             email,
-            companyName,
-            economicSector,
-            employeeCount,
             passwordHash,
-            verificationCode: code,
-            expiresAt,
+            roleId: companyRole.id,
+            companyId,
+            isAdmin: false,
         });
 
-        await sendVerificationEmail(email, code);
+        const user = await findUserByEmail(email);
+        const token = issueToken(user);
 
         return successResponse(
             res,
-            "Registro iniciado. Revisa tu correo para verificar la cuenta.",
-            { email },
-            201
+            "Empresa registrada exitosamente. Bienvenido a GreenNode.",
+            {
+                id: user.id,
+                email: user.email,
+                role: user.role,
+                companyId: user.company_id,
+                companyName: user.company_name,
+                employeeCount: user.employee_count ?? null,
+                economicSector: user.economic_sector ?? null,
+                isAdmin: Boolean(user.is_admin),
+            },
+            201,
+            { token }
         );
     } catch (error) {
         console.error("[register] Error:", error.message);
@@ -78,11 +81,6 @@ export async function login(req, res) {
 
         const user = await findUserByEmail(email);
         if (!user) {
-            // Give a hint if they have a pending registration
-            const pending = await findPendingByEmail(email);
-            if (pending) {
-                return errorResponse(res, "Debes verificar tu email antes de iniciar sesión.", 403, { email });
-            }
             return errorResponse(res, "Credenciales inválidas.", 401);
         }
 
@@ -111,118 +109,6 @@ export async function login(req, res) {
         );
     } catch (error) {
         return errorResponse(res, "Error al iniciar sesión.", 500, { detail: error.message });
-    }
-}
-
-// POST /api/auth/verify-email
-// Validates the code, then creates the company + user in the real tables.
-export async function verifyEmail(req, res) {
-    try {
-        const { email, code } = req.body;
-        if (!email || !code) {
-            return errorResponse(res, "Email y código son obligatorios.", 400);
-        }
-
-        const pending = await findPendingByEmail(email);
-
-        if (!pending) {
-            return errorResponse(res, "No hay un registro pendiente para este email.", 404);
-        }
-
-        // Remove expired pending and reject
-        if (new Date() > new Date(pending.expires_at)) {
-            await deletePendingByEmail(email);
-            return errorResponse(res, "El código ha expirado. Regístrate nuevamente.", 400);
-        }
-
-        if (String(pending.verification_code) !== String(code)) {
-            return errorResponse(res, "Código inválido.", 400);
-        }
-
-        // Code is valid → create real account
-        const companyRole = await findRoleByName("client");
-        if (!companyRole) {
-            return errorResponse(res, "Rol 'client' no encontrado en la base de datos.", 500);
-        }
-
-        const companyId = await createCompany(
-            pending.company_name,
-            pending.economic_sector,
-            pending.employee_count
-        );
-
-        await createUser({
-            email: pending.email,
-            passwordHash: pending.password_hash,
-            roleId: companyRole.id,
-            companyId,
-            isAdmin: false,
-        });
-
-        // Clean up pending record
-        await deletePendingByEmail(email);
-
-        // Fetch full user for token payload
-        const user = await findUserByEmail(email);
-        const token = issueToken(user);
-
-        return successResponse(
-            res,
-            "Email verificado correctamente. Bienvenido a GreenNode.",
-            {
-                id: user.id,
-                email: user.email,
-                role: user.role,
-                companyId: user.company_id,
-                companyName: user.company_name,
-                employeeCount: user.employee_count ?? null,
-                economicSector: user.economic_sector ?? null,
-                isAdmin: Boolean(user.is_admin),
-            },
-            200,
-            { token }
-        );
-    } catch (e) {
-        console.error("[verifyEmail] ERROR:", e.message, e.stack);
-        return errorResponse(res, "Error al verificar email.", 500, { detail: e.message });
-    }
-}
-
-// POST /api/auth/resend-code
-export async function resendCode(req, res) {
-    try {
-        const { email } = req.body;
-        if (!email) return errorResponse(res, "Email es obligatorio.", 400);
-
-        // If already verified, no point resending
-        const existingUser = await findUserByEmail(email);
-        if (existingUser) {
-            return errorResponse(res, "El email ya fue verificado.", 409);
-        }
-
-        const pending = await findPendingByEmail(email);
-        if (!pending) {
-            return errorResponse(res, "No hay un registro pendiente para este email.", 404);
-        }
-
-        const code = generateCode();
-        const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
-
-        await upsertPendingRegistration({
-            email: pending.email,
-            companyName: pending.company_name,
-            economicSector: pending.economic_sector,
-            employeeCount: pending.employee_count,
-            passwordHash: pending.password_hash,
-            verificationCode: code,
-            expiresAt,
-        });
-
-        await sendVerificationEmail(email, code);
-
-        return successResponse(res, "Código reenviado. Revisa tu correo.");
-    } catch (e) {
-        return errorResponse(res, "Error al reenviar el código.", 500, { detail: e.message });
     }
 }
 
