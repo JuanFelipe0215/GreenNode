@@ -1,10 +1,10 @@
 
 import "../config/env.js";
 import nodemailer from "nodemailer";
+import dns from "node:dns";
 
-const dns = require("dns");
 dns.setDefaultResultOrder("ipv4first");
-const nodemailer = require("nodemailer");
+
 
 
 
