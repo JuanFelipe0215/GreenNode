@@ -57,11 +57,7 @@ export async function register(req, res) {
             expiresAt,
         });
 
-        try {
-            await sendVerificationEmail(email, code);
-        } catch (emailErr) {
-            console.error("[register] Email send failed:", emailErr.message);
-        }
+        await sendVerificationEmail(email, code);
 
         return successResponse(
             res,
