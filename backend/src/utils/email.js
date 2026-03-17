@@ -1,12 +1,8 @@
-
 import "../config/env.js";
 import nodemailer from "nodemailer";
 import dns from "node:dns";
 
 dns.setDefaultResultOrder("ipv4first");
-
-
-
 
 const gmailUser = process.env.GMAIL_USER;
 const gmailPass = process.env.GMAIL_APP_PASSWORD;
@@ -16,18 +12,16 @@ if (!gmailUser || !gmailPass) {
 }
 
 console.log("[email] usando SMTP gmail puerto 587");
-console.error("[email] error real:", error);
 
 const transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 587,
-    secure: false,
-    auth: {
-        user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_APP_PASSWORD,
-    },
+  host: "smtp.gmail.com",
+  port: 587,
+  secure: false,
+  auth: {
+    user: process.env.GMAIL_USER,
+    pass: process.env.GMAIL_APP_PASSWORD,
+  },
 });
-
 export async function verifyEmailConfig() {
   try {
     await transporter.verify();
