@@ -8,6 +8,9 @@ if (!gmailUser || !gmailPass) {
   console.error("[email] Faltan GMAIL_USER o GMAIL_APP_PASSWORD");
 }
 
+console.log("[email] usando SMTP gmail puerto 587");
+console.error("[email] error real:", error);
+
 const transporter = nodemailer.createTransport({
     host: "smtp.gmail.com",
     port: 587,
